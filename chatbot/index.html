@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chatbot with Claim Verification</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f4f4f9;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+    }
+    .chat-container {
+      width: 90%;
+      max-width: 600px;
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    .messages {
+      height: 300px;
+      overflow-y: auto;
+      margin-bottom: 20px;
+      border: 1px solid #ddd;
+      padding: 10px;
+      border-radius: 6px;
+      background-color: #fafafa;
+    }
+    .message {
+      margin-bottom: 10px;
+    }
+    .message.user {
+      text-align: right;
+      color: #007bff;
+    }
+    .message.bot {
+      text-align: left;
+      color: #28a745;
+    }
+    .input-container {
+      display: flex;
+      margin-bottom: 20px;
+    }
+    input[type="text"] {
+      flex-grow: 1;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 6px 0 0 6px;
+      outline: none;
+    }
+    button {
+      padding: 10px 20px;
+      border: none;
+      background-color: #007bff;
+      color: #fff;
+      cursor: pointer;
+      border-radius: 0 6px 6px 0;
+      font-size: 16px;
+    }
+    .dropzone {
+      border: 2px dashed #007bff;
+      border-radius: 6px;
+      padding: 20px;
+      text-align: center;
+      cursor: pointer;
+      color: #007bff;
+      margin-bottom: 20px;
+      background-color: #f9f9ff;
+    }
+    .dropzone.dragover {
+      background-color: #e6f0ff;
+    }
+  </style>
+</head>
+<body>
+  <div class="chat-container">
+    <div class="messages" id="messages"></div>
+    <div class="input-container">
+      <input type="text" id="userInput" placeholder="Type your message here...">
+      <button onclick="sendMessage()">Send</button>
+    </div>
+    <div class="dropzone" id="dropzone" ondrop="handleFileDrop(event)" ondragover="handleDragOver(event)">
+      Drag and drop a PDF or image file here, or click to upload.
+    </div>
+  </div>
+
+  <script>
+    const messagesContainer = document.getElementById('messages');
+    const dropzone = document.getElementById('dropzone');
+
+    async function sendMessage() {
+      const input = document.getElementById('userInput');
+      const userMessage = input.value.trim();
+      if (!userMessage) return;
+
+      // Display user's message
+      addMessage(userMessage, 'user');
+      input.value = '';
+
+      try {
+        const response = await fetch('http://127.0.0.1:5000/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userMessage }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          addMessage(data.botMessage, 'bot');
+        } else {
+          addMessage('An error occurred while processing your message.', 'bot');
+        }
+      } catch (error) {
+        console.error('Error:', error);
+        addMessage('Failed to communicate with the server.', 'bot');
+      }
+    }
+
+    function addMessage(text, sender) {
+      const messageDiv = document.createElement('div');
+      messageDiv.className = `message ${sender}`;
+      messageDiv.textContent = text;
+      messagesContainer.appendChild(messageDiv);
+      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+
+    function handleDragOver(event) {
+      event.preventDefault();
+      dropzone.classList.add('dragover');
+    }
+
+    function handleFileDrop(event) {
+      event.preventDefault();
+      dropzone.classList.remove('dragover');
+
+      const file = event.dataTransfer.files[0];
+      if (file) {
+        uploadFile(file);
+      }
+    }
+
+    dropzone.addEventListener('click', () => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.pdf,.jpg,.jpeg,.png';
+      input.onchange = (e) => {
+        const file = e.target.files[0];
+        if (file) uploadFile(file);
+      };
+      input.click();
+    });
+
+    async function uploadFile(file) {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      addMessage('Uploading file for diagnosis...', 'user');
+
+      try {
+        const response = await fetch('http://127.0.0.1:5000/diagnosis', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          addMessage(data.diagnosis, 'bot');
+        } else {
+          addMessage('Failed to process the file.', 'bot');
+        }
+      } catch (error) {
+        console.error('Error:', error);
+        addMessage('Error uploading the file.', 'bot');
+      }
+    }
+  </script>
+</body>
+</html>
