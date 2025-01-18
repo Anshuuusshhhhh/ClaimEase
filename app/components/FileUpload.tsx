@@ -3,16 +3,16 @@
 import { useState } from 'react'
 import { Upload, X } from 'lucide-react'
 import { useTranslation } from '../hooks/useTranslation'
+import { useRouter } from 'next/navigation'
 
 interface FileUploadProps {
   onUpload: (files: File[]) => void
-  onDiagnosis: (diagnosis: string) => void
 }
 
-export default function FileUpload({ onUpload, onDiagnosis }: FileUploadProps) {
+export default function FileUpload({ onUpload }: FileUploadProps) {
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([])
-  const [isLoading, setIsLoading] = useState(false)
   const { t } = useTranslation()
+  const router = useRouter()
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -20,27 +20,30 @@ export default function FileUpload({ onUpload, onDiagnosis }: FileUploadProps) {
       setUploadedFiles([...uploadedFiles, ...newFiles])
       onUpload(newFiles)
 
-      setIsLoading(true)
+      // Send POST request to localhost:5000/diagnosis
       const formData = new FormData()
-      formData.append('file', newFiles[0])
+      newFiles.forEach((file) => {
+        formData.append('file', file)
+      })
 
       try {
-        const response = await fetch('/api/diagnose', {
+        const response = await fetch('http://localhost:5000/diagnosis', {
           method: 'POST',
           body: formData,
         })
 
         if (!response.ok) {
-          throw new Error('Failed to get diagnosis')
+          throw new Error(`HTTP error! status: ${response.status}`)
         }
 
-        const data = await response.json()
-        onDiagnosis(data.diagnosis)
+        const result = await response.json()
+        console.log('Diagnosis result:', result)
+
+        // Store the result in localStorage and navigate to results page
+        localStorage.setItem('diagnosisResult', JSON.stringify(result))
+        router.push('/results')
       } catch (error) {
-        console.error('Error:', error)
-        onDiagnosis('Failed to get diagnosis. Please try again.')
-      } finally {
-        setIsLoading(false)
+        console.error('Error uploading files:', error)
       }
     }
   }
@@ -57,10 +60,10 @@ export default function FileUpload({ onUpload, onDiagnosis }: FileUploadProps) {
         <input
           type="file"
           onChange={handleFileChange}
+          multiple
           className="hidden"
           id="file-upload"
-          accept=".pdf,.jpg,.jpeg,.png"
-          disabled={isLoading}
+          accept=".pdf,.xlsx,.xls,.doc,.docx,.jpg,.jpeg,.png"
         />
         <label
           htmlFor="file-upload"
@@ -68,7 +71,7 @@ export default function FileUpload({ onUpload, onDiagnosis }: FileUploadProps) {
         >
           <Upload className="w-12 h-12 text-gray-400" />
           <span className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-            {isLoading ? t('processing') : t('clickToUpload')}
+            {t('clickToUpload')}
           </span>
           <span className="text-xs text-gray-500 dark:text-gray-400">
             {t('fileTypes')}
@@ -80,7 +83,7 @@ export default function FileUpload({ onUpload, onDiagnosis }: FileUploadProps) {
           {uploadedFiles.map((file, index) => (
             <li key={index} className="flex items-center justify-between bg-gray-100 dark:bg-gray-800 rounded p-2">
               <span className="text-sm text-gray-700 dark:text-gray-300">{file.name}</span>
-              <button onClick={() => removeFile(index)} className="text-red-500 hover:text-red-700" disabled={isLoading}>
+              <button onClick={() => removeFile(index)} className="text-red-500 hover:text-red-700">
                 <X size={16} />
               </button>
             </li>

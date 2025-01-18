@@ -1,3 +1,4 @@
+import speech_recognition as sr
 import openai
 from flask import Flask, request, jsonify
 import pdfplumber
@@ -34,18 +35,53 @@ def extract_text_from_image(image_path):
 
 # Function to make a diagnosis request to OpenAI's GPT model
 def diagnose_with_openai(context):
-    response = openai.ChatCompletion.create(
-        model="gpt-4o-mini",  # or "gpt-3.5-turbo" gpt-4 
-        messages=[
-                {"role": "developer", "content": "You are an AI medical assistant specializing in health insurance claims. Your role is to converse professionally with users and guide them on submitting necessary details for insurance claim evaluation. You can only answer medical and insurance-related questions. If users ask unrelated queries, politely redirect them to medical or claim-related topics."},
-                {"role": "user", "content": context}
-            ],
-        max_tokens=500,
-        temperature=0.7,
-    )
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-4o-mini",  # or "gpt-3.5-turbo" gpt-4 
+            messages=[
+                    {"role": "developer", "content": "You are an AI medical assistant specializing in health insurance claims. Your role is to converse professionally with users and guide them on submitting necessary details for insurance claim evaluation. You can only answer medical and insurance-related questions. If users ask unrelated queries, politely redirect them to medical or claim-related topics."},
+                    {"role": "user", "content": context}
+                ]
+        )
 
-    bot_message = response['choices'][0]['message']['content']
-    return jsonify({"botMessage": bot_message})
+        bot_message = response['choices'][0]['message']['content']
+        return bot_message
+    except Exception as e:
+        # Handle all other errors
+        return jsonify({"error": f"Internal server error: {str(e)}"}), 500
+    
+# Route for uploading and processing documents
+@app.route('/diagnosis', methods=['POST'])   
+def diagnose():
+
+    # Check if the post request has the files
+    if 'file' not in request.files:
+        return jsonify({"error": "No file provided!"}), 400
+
+    file = request.files['file']
+    file_ext = file.filename.split('.')[-1].lower()
+
+    # If the file is a PDF
+    if file_ext == 'pdf':
+        file_path = os.path.join("", file.filename)
+        file.save(file_path)
+        context = extract_text_from_pdf(file_path)
+
+    # If the file is an image (e.g., X-ray, MRI)
+    elif file_ext in ['jpg', 'jpeg', 'png']:
+        file_path = os.path.join("", file.filename)
+        file.save(file_path)
+        context = extract_text_from_image(file_path)
+
+    # If the file type is unsupported
+    else:
+        return jsonify({"error": "Unsupported file format!"}), 400
+
+    # Get diagnosis and claim verification
+    diagnosis = diagnose_with_openai(context)
+    # print(context)
+    # print(diagnosis)
+    return jsonify({"diagnosis": diagnosis})
 
 @app.route("/")
 def home():
@@ -90,7 +126,7 @@ def chat():
         # Extract the AI's response
         bot_message = response['choices'][0]['message']['content']
 
-        return jsonify({"botMessage": bot_message})
+        return jsonify({"botMessage": bot_message}) 
 
     except Exception as e:
         # Handle all other errors
@@ -98,38 +134,25 @@ def chat():
 
     
 
-# Route for uploading and processing documents
-@app.route('/diagnosis', methods=['POST'])   
-def diagnose():
 
-    # Check if the post request has the files
-    if 'file' not in request.files:
-        return jsonify({"error": "No file provided!"}), 400
 
-    file = request.files['file']
-    file_ext = file.filename.split('.')[-1].lower()
+@app.route('/transcribe', methods=['POST'])
+def transcribe_audio():
+    if 'audio' not in request.files:
+        return jsonify({"error": "No audio file provided"}), 400
 
-    # If the file is a PDF
-    if file_ext == 'pdf':
-        file_path = os.path.join("uploads", file.filename)
-        file.save(file_path)
-        context = extract_text_from_pdf(file_path)
+    audio_file = request.files['audio']
+    recognizer = sr.Recognizer()
 
-    # If the file is an image (e.g., X-ray, MRI)
-    elif file_ext in ['jpg', 'jpeg', 'png']:
-        file_path = os.path.join("uploads", file.filename)
-        file.save(file_path)
-        context = extract_text_from_image(file_path)
-
-    # If the file type is unsupported
-    else:
-        return jsonify({"error": "Unsupported file format!"}), 400
-
-    # Get diagnosis and claim verification
-    diagnosis = diagnose_with_openai(context)
-
-    return jsonify({"diagnosis": diagnosis})
-
+    try:
+        with sr.AudioFile(audio_file) as source:
+            audio_data = recognizer.record(source)
+        text = recognizer.recognize_google(audio_data)
+        return jsonify({"transcription": text})
+    except sr.UnknownValueError:
+        return jsonify({"error": "Could not understand audio"}), 400
+    except sr.RequestError as e:
+        return jsonify({"error": f"Could not request results from Google Speech Recognition service; {e}"}), 500
 # Run the Flask app
 if __name__ == '__main__':
     app.run(debug=True)
